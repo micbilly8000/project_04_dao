@@ -1,33 +1,48 @@
-// We require the Hardhat Runtime Environment explicitly here. This is optional
-// but useful for running the script in a standalone fashion through `node <script>`.
-//
-// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
-// will compile your contracts, add the Hardhat Runtime Environment's members to the
-// global scope, and execute the script.
 const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 async function main() {
-  const NAME = 'Dapp University'
-  const SYMBOL = 'DAPP'
-  const MAX_SUPPLY = '1000000'
+  const [deployer] = await hre.ethers.getSigners();
+  console.log("Deploying contracts with account:", deployer.address);
+
+  const NAME = "Dapp University";
+  const SYMBOL = "DAPP";
+  const MAX_SUPPLY = "1000000";
 
   // Deploy Token
-  const Token = await hre.ethers.getContractFactory('Token')
-  let token = await Token.deploy(NAME, SYMBOL, MAX_SUPPLY)
+  const Token = await hre.ethers.getContractFactory("Token");
+  const token = await Token.deploy(NAME, SYMBOL, MAX_SUPPLY);
+  await token.deployed();
+  console.log(`Token deployed to: ${token.address}`);
 
-  await token.deployed()
-  console.log(`Token deployed to: ${token.address}\n`)
+  // Deploy DAO, with the token address and your quorum parameter
+  const DAO = await hre.ethers.getContractFactory("DAO");
+  // Here the second parameter is your quorum (in wei). You passed a big number string before.
+  const dao = await DAO.deploy(token.address, "500000000000000000000001");
+  await dao.deployed();
+  console.log(`DAO deployed to: ${dao.address}`);
 
-  // Deploy DAO
-  const DAO = await hre.ethers.getContractFactory('DAO')
-  const dao = await DAO.deploy(token.address, '500000000000000000000001')
-  await dao.deployed()
-
-  console.log(`DAO deployed to: ${dao.address}\n`)
+  // Optionally: update config.json with these deployed addresses
+  const configPath = path.resolve(__dirname, "../src/config.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  
+  // Assumes config has an entry under this chainId
+  const network = await hre.ethers.provider.getNetwork();
+  const chainId = network.chainId.toString();
+  // Overwrite addresses
+  config[chainId] = {
+    token: {
+      address: token.address
+    },
+    dao: {
+      address: dao.address
+    }
+  };
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log("Updated config.json with deployed addresses.");
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;

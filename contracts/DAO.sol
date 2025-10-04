@@ -1,36 +1,43 @@
-//SPDX-License-Identifier: Unlicense
+// SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
 import "./Token.sol";
 
 contract DAO {
-    address owner;
+    address public owner;
     Token public token;
     uint256 public quorum;
+
+    enum VoteType { Absent, For, Against }
 
     struct Proposal {
         uint256 id;
         string name;
         uint256 amount;
         address payable recipient;
-        uint256 votes;
+        uint256 votesFor;
+        uint256 votesAgainst;
         bool finalized;
     }
 
     uint256 public proposalCount;
     mapping(uint256 => Proposal) public proposals;
-
-    mapping(address => mapping(uint256 => bool)) votes;
+    mapping(address => mapping(uint256 => bool)) public votesCast;
 
     event Propose(
-        uint id,
+        uint256 id,
         uint256 amount,
         address recipient,
-        address creator
+        address creator,
+        string name
     );
-    event Vote(uint256 id, address investor);
-    event Finalize(uint256 id);
+    event VoteCast(uint256 id, address voter, VoteType voteType, uint256 weight);
+    event Finalize(uint256 id, bool passed);
+
+    modifier onlyInvestor() {
+        require(token.balanceOf(msg.sender) > 0, "DAO: must be token holder");
+        _;
+    }
 
     constructor(Token _token, uint256 _quorum) {
         owner = msg.sender;
@@ -38,85 +45,92 @@ contract DAO {
         quorum = _quorum;
     }
 
-    // Allow contract to receive ether
+    // Allow contract to receive Ether
     receive() external payable {}
 
-    modifier onlyInvestor() {
-        require(
-            token.balanceOf(msg.sender) > 0,
-            "must be token holder"
-        );
-        _;
-    }
-
-    // Create proposal
     function createProposal(
         string memory _name,
         uint256 _amount,
         address payable _recipient
     ) external onlyInvestor {
-        require(address(this).balance >= _amount);
+        require(address(this).balance >= _amount, "DAO: insufficient balance");
 
         proposalCount++;
+        proposals[proposalCount] = Proposal({
+            id: proposalCount,
+            name: _name,
+            amount: _amount,
+            recipient: _recipient,
+            votesFor: 0,
+            votesAgainst: 0,
+            finalized: false
+        });
 
-        proposals[proposalCount] = Proposal(
-            proposalCount,
-            _name,
-            _amount,
-            _recipient,
-            0,
-            false
-        );
-
-        emit Propose(
-            proposalCount,
-            _amount,
-            _recipient,
-            msg.sender
-        );
+        emit Propose(proposalCount, _amount, _recipient, msg.sender, _name);
     }
 
-    // Vote on proposal
-    function vote(uint256 _id) external onlyInvestor {
-        // Fetch proposal from mapping by id
+    /// @notice Cast a vote: For or Against
+    function vote(uint256 _id, VoteType voteType) external onlyInvestor {
         Proposal storage proposal = proposals[_id];
 
-        // Don't let investors vote twice
-        require(!votes[msg.sender][_id], "already voted");
+        require(!proposal.finalized, "DAO: proposal already finalized");
+        require(!votesCast[msg.sender][_id], "DAO: already voted");
+        require(
+            voteType == VoteType.For || voteType == VoteType.Against,
+            "DAO: invalid vote type"
+        );
 
-        // update votes
-        proposal.votes += token.balanceOf(msg.sender);
+        uint256 weight = token.balanceOf(msg.sender);
+        require(weight > 0, "DAO: no voting weight");
 
-        // Track that user has voted
-        votes[msg.sender][_id] = true;
+        votesCast[msg.sender][_id] = true;
 
-        // Emit an event
-        emit Vote(_id, msg.sender);
+        if (voteType == VoteType.For) {
+            proposal.votesFor += weight;
+        } else {
+            // voteType == Against
+            proposal.votesAgainst += weight;
+        }
+
+        emit VoteCast(_id, msg.sender, voteType, weight);
     }
 
-    // Finalize proposal & tranfer funds
     function finalizeProposal(uint256 _id) external onlyInvestor {
-        // Fetch proposal from mapping by id
         Proposal storage proposal = proposals[_id];
+        require(!proposal.finalized, "DAO: already finalized");
 
-        // Ensure proposal is not already finalized
-        require(proposal.finalized == false, "proposal already finalized");
+        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst;
+        require(totalVotes >= quorum, "DAO: quorum not reached");
 
-        // Mark proposal as finalized
         proposal.finalized = true;
 
-        // Check that proposal has enough votes
-        require(proposal.votes >= quorum, "must reach quorum to finalize proposal");
+        bool passed = false;
+        if (proposal.votesFor > proposal.votesAgainst) {
+            passed = true;
+            require(
+                address(this).balance >= proposal.amount,
+                "DAO: insufficient balance to transfer"
+            );
+            (bool sent, ) = proposal.recipient.call{value: proposal.amount}("");
+            require(sent, "DAO: transfer failed");
+        }
 
-        // Check that the contract has enough ether
-        require(address(this).balance >= proposal.amount);
-
-        // Transfer the funds to recipient
-        (bool sent, ) = proposal.recipient.call{value: proposal.amount}("");
-        require(sent);
-
-        // Emit event
-        emit Finalize(_id);
+        emit Finalize(_id, passed);
     }
 
+    /// @notice Returns vote counts and finalization status for a proposal.
+    function getProposalVotes(uint256 _id)
+        external
+        view
+        returns (
+            uint256 forVotes,
+            uint256 againstVotes,
+            bool isFinalized
+        )
+    {
+        Proposal storage p = proposals[_id];
+        forVotes = p.votesFor;
+        againstVotes = p.votesAgainst;
+        isFinalized = p.finalized;
+    }
 }

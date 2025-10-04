@@ -23,6 +23,12 @@
         "internalType": "uint256",
         "name": "id",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "passed",
+        "type": "bool"
       }
     ],
     "name": "Finalize",
@@ -54,6 +60,12 @@
         "internalType": "address",
         "name": "creator",
         "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
       }
     ],
     "name": "Propose",
@@ -71,11 +83,23 @@
       {
         "indexed": false,
         "internalType": "address",
-        "name": "investor",
+        "name": "voter",
         "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint8",
+        "name": "voteType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "weight",
+        "type": "uint256"
       }
     ],
-    "name": "Vote",
+    "name": "VoteCast",
     "type": "event"
   },
   {
@@ -159,7 +183,12 @@
       },
       {
         "internalType": "uint256",
-        "name": "votes",
+        "name": "votesFor",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "votesAgainst",
         "type": "uint256"
       },
       {
@@ -203,11 +232,45 @@
         "internalType": "uint256",
         "name": "_id",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "voteType",
+        "type": "uint8"
       }
     ],
     "name": "vote",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_id",
+        "type": "uint256"
+      }
+    ],
+    "name": "getProposalVotes",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "forVotes",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "againstVotes",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "isFinalized",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
